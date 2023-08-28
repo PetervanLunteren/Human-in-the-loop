@@ -1,3 +1,31 @@
+This is a fork from `labelImg <https://github.com/tzutalin/labelImg.git>`__. I adjusted the code to suit the requirements as an annotation tool and human-in-the-loop feature in `EcoAssist <https://github.com/PetervanLunteren/EcoAssist>`__.
+
+I've adjusted/added the following features:
+
+* set scroll area to selected list item
+* change save path so that it saves the xml in a temporary folder
+* color all list items at opening
+* always look for annotation file in same folder as image, makes working with subfolder possible
+* check if xml is verified
+* loop through selected xmls and find the first image not verified
+* get xml path with temp-folder squeezed in
+* open only the files in the file_list_txt file
+* color single list items after verification
+* show selected image in middle of list window
+* exclude image deletion from options
+* enable auto save mode by default
+* exlude unnecessary buttons in UI
+* set standard window settings when opening
+* start with image passed on as file_to_begin_with, in stead of index 0
+* show selected image in middle of list window
+* default save location is same folder as image
+* classes are provided as list instead of file
+* create temporary file to notify EcoAssist that it should convert xml to coco
+
+Below is the original README.md text.
+
+----------------------------------------------------
+
 .. image:: /readme/images/labelimg.png
         :target: https://github.com/heartexlabs/label-studio
 
@@ -315,3 +343,4 @@ Stargazers over time
 
 .. image:: https://starchart.cc/tzutalin/labelImg.svg
 
+</details>
