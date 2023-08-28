@@ -1602,6 +1602,8 @@ class MainWindow(QMainWindow, WindowMixin):
             self.load_file(filename)
 
     def save_file(self, _value=False):
+                                                                                            # ADJUSTMENT: set dummy save dir to real folder
+        self.default_save_dir = os.path.dirname(os.path.abspath(sys.argv[0]))               # Adjusted by Peter van Lunteren on 28 Aug 2023
         if self.default_save_dir is not None and len(ustr(self.default_save_dir)):
             if self.file_path:
                 image_file_name = os.path.basename(self.file_path)
@@ -1746,16 +1748,14 @@ class MainWindow(QMainWindow, WindowMixin):
         self.set_dirty()
 
     def load_predefined_classes(self, predef_classes_file):
-                                                                        # ADJUSTMENT: classes are provided as list instead of file
-        self.label_hist = predef_classes_file.split(',')                # Adjusted by Peter van Lunteren on 6 July 2023
-        # if os.path.exists(predef_classes_file) is True:               # Adjusted by Peter van Lunteren on 6 July 2023
-        #     with codecs.open(predef_classes_file, 'r', 'utf8') as f:  # Adjusted by Peter van Lunteren on 6 July 2023
-        #         for line in f:                                        # Adjusted by Peter van Lunteren on 6 July 2023
-        #             line = line.strip()                               # Adjusted by Peter van Lunteren on 6 July 2023
-        #             if self.label_hist is None:                       # Adjusted by Peter van Lunteren on 6 July 2023
-        #                 self.label_hist = [line]                      # Adjusted by Peter van Lunteren on 6 July 2023
-        #             else:                                             # Adjusted by Peter van Lunteren on 6 July 2023
-        #                 self.label_hist.append(line)                  # Adjusted by Peter van Lunteren on 6 July 2023
+        if os.path.exists(predef_classes_file) is True:
+            with codecs.open(predef_classes_file, 'r', 'utf8') as f:
+                for line in f:
+                    line = line.strip()
+                    if self.label_hist is None:
+                        self.label_hist = [line]
+                    else:
+                        self.label_hist.append(line)
 
     def load_pascal_xml_by_filename(self, xml_path):
         if self.file_path is None:
@@ -1862,7 +1862,7 @@ def get_main_app(argv=None):
     args = argparser.parse_args(argv[1:])
 
     # add dummy path for image and save dir                                                             # Adjusted by Peter van Lunteren on 13 July 2023
-    current_dir = os.path.dirname(__file__)                                                             # Adjusted by Peter van Lunteren on 13 July 2023
+    current_dir = os.path.dirname(os.path.abspath(sys.argv[0]))                                         # Adjusted by Peter van Lunteren on 28 Aug 2023
     image_dir = current_dir                                                                             # Adjusted by Peter van Lunteren on 13 July 2023
     save_dir = current_dir                                                                              # Adjusted by Peter van Lunteren on 13 July 2023
 
