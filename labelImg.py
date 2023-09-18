@@ -1515,7 +1515,8 @@ class MainWindow(QMainWindow, WindowMixin):
             if verified_flag:                                                                           # Adjusted by Peter van Lunteren on 13 July 2023
                 file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
                 file_widget_item.setCheckState(2)                                                       # Adjusted by Peter van Lunteren on 13 July 2023
-            else:                                                                                       # Adjusted by Peter van Lunteren on 13 July 2023
+                self.open_next_image()                                                                  # Adjusted by Peter van Lunteren on 13 July 2023
+            else:                                                                                       # Adjusted by Peter van Lunteren on 18 Sept 2023
                 file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
                 file_widget_item.setCheckState(0)                                                       # Adjusted by Peter van Lunteren on 13 July 2023
 
