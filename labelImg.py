@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# Human in the loop and annotation tool for EcoAssist (https://github.com/PetervanLunteren/EcoAssist).
+# Forked from labelImg (https://github.com/HumanSignal/labelImg).
+# Adjusted by Peter van Lunteren
+# Latest edit by Peter van Lunteren on 20 Sept 2023
+
 import argparse
 import codecs
 import os.path
@@ -10,12 +15,12 @@ import sys
 import webbrowser as wb
 from functools import partial
 
-                                        # ADJUSTMENT: import extra packages
-import csv                              # Adjusted by Peter van Lunteren on 6 July 2023
-import datetime                         # Adjusted by Peter van Lunteren on 6 July 2023
-from pathlib import Path                # Adjusted by Peter van Lunteren on 6 July 2023
-import xml.etree.cElementTree as ET     # Adjusted by Peter van Lunteren on 1 Aug 2023
-
+                                                # ADJUSTMENT: import extra packages
+import csv                                      # Adjusted by Peter van Lunteren on 6 July 2023
+import datetime                                 # Adjusted by Peter van Lunteren on 6 July 2023
+from pathlib import Path                        # Adjusted by Peter van Lunteren on 6 July 2023
+import xml.etree.cElementTree as ET             # Adjusted by Peter van Lunteren on 1 Aug 2023
+import pickle
 
 try:
     from PyQt5.QtGui import *
@@ -91,6 +96,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.start_up_var = True                                    # Adjusted by Peter van Lunteren on 13 July 2023
         self.start_up_counter = 0                                   # Adjusted by Peter van Lunteren on 13 July 2023
         self.initial_window_size = (1000, 750)                      # Adjusted by Peter van Lunteren on 13 July 2023
+        self.temp_file_unique_idx = 1                               # Adjusted by Peter van Lunteren on 20 Sept 2023
 
         # Load setting in the main thread
         self.settings = Settings()
@@ -152,15 +158,23 @@ class MainWindow(QMainWindow, WindowMixin):
         use_default_label_container.setLayout(use_default_label_qhbox_layout)
 
         # Create a widget for edit and diffc button
-        self.diffc_button = QCheckBox(get_str('useDifficult'))
-        self.diffc_button.setChecked(False)
-        self.diffc_button.stateChanged.connect(self.button_state)
+        # self.diffc_button = QCheckBox(get_str('useDifficult'))                                        # ADJUSTMENT: exclude unnecessary buttons
+        # self.diffc_button.setChecked(False)                                                           # Adjusted by Peter van Lunteren on 20 Sept 2023
+        # self.diffc_button.stateChanged.connect(self.button_state)                                     # Adjusted by Peter van Lunteren on 20 Sept 2023
+
+        self.find_next_unverified_button = QPushButton('Jump to unverified image', self)                # ADJUSTMENT: add buttons to skip to unverified image
+        self.find_next_unverified_button.setToolTip('Sometimes it can be difficult to locate '          # Adjusted by Peter van Lunteren on 20 Sept 2023
+                                                    'images that were accidently left unverified. '     # Adjusted by Peter van Lunteren on 20 Sept 2023
+                                                    'With this button you can locate them, starting '   # Adjusted by Peter van Lunteren on 20 Sept 2023
+                                                    'from the beginning.')                              # Adjusted by Peter van Lunteren on 20 Sept 2023
+        self.find_next_unverified_button.move(100,70)                                                   # Adjusted by Peter van Lunteren on 20 Sept 2023
+
         self.edit_button = QToolButton()
         self.edit_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
 
         # Add some of widgets to list_layout
         list_layout.addWidget(self.edit_button)
-        list_layout.addWidget(self.diffc_button)
+        # list_layout.addWidget(self.diffc_button)                                                      # Adjusted by Peter van Lunteren on 20 Sept 2023
         list_layout.addWidget(use_default_label_container)
 
         # Create and add combobox for showing unique labels in group
@@ -172,6 +186,7 @@ class MainWindow(QMainWindow, WindowMixin):
         label_list_container = QWidget()
         label_list_container.setLayout(list_layout)
         self.label_list.itemActivated.connect(self.label_selection_changed)
+        self.find_next_unverified_button.clicked.connect(self.skip_to_next_unverified_file)             # Adjusted by Peter van Lunteren on 20 Sept 2023
         self.label_list.itemSelectionChanged.connect(self.label_selection_changed)
         self.label_list.itemDoubleClicked.connect(self.edit_label)
         # Connect to itemChanged to detect checkbox changes.
@@ -186,6 +201,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.file_list_widget.itemDoubleClicked.connect(self.file_item_double_clicked)
         file_list_layout = QVBoxLayout()
         file_list_layout.setContentsMargins(0, 0, 0, 0)
+        file_list_layout.addWidget(self.find_next_unverified_button)                                    # Adjusted by Peter van Lunteren on 20 Sept 2023
 
         file_list_layout.addWidget(self.file_list_widget)
         file_list_container = QWidget()
@@ -286,8 +302,8 @@ class MainWindow(QMainWindow, WindowMixin):
 
         create_mode = action(get_str('crtBox'), self.set_create_mode,
                              'w', 'new', get_str('crtBoxDetail'), enabled=False)
-        edit_mode = action(get_str('editBox'), self.set_edit_mode,
-                           'Ctrl+J', 'edit', get_str('editBoxDetail'), enabled=False)
+        edit_mode = action(get_str('editBox'), self.set_edit_mode,                                                              # ADJUSTMENT: changed edit shortcut to e
+                           's', 'edit', get_str('editBoxDetail'), enabled=False)                                                # Adjusted by Peter van Lunteren on 20 Sept 2023
 
         create = action(get_str('crtBox'), self.create_shape,
                         'w', 'new', get_str('crtBoxDetail'), enabled=False)
@@ -394,7 +410,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.draw_squares_option.triggered.connect(self.toggle_draw_square)
 
         # Store actions for further handling.
-                                                                                                                                # ADJUSTMENT: exclude image deletion from options
+                                                                                                                                # ADJUSTMENT: exclude image deletion and save from options
         self.actions = Struct(save=save, save_format=save_format, saveAs=save_as, open=open, close=close, resetAll=reset_all,   # Adjusted by Peter van Lunteren on 3 Aug 2023
                               lineColor=color1, create=create, delete=delete, edit=edit, copy=copy,
                               createMode=create_mode, editMode=edit_mode, advancedMode=advanced_mode,
@@ -405,7 +421,7 @@ class MainWindow(QMainWindow, WindowMixin):
                               lightBrighten=light_brighten, lightDarken=light_darken, lightOrg=light_org,
                               lightActions=light_actions,
                               fileMenuActions=(
-                                  open, open_dir, save, save_as, close, reset_all, quit),
+                                  open, open_dir, save_as, close, reset_all, quit),                                              # Adjusted by Peter van Lunteren on 19 Sept 2023
                               beginner=(), advanced=(),
                               editMenu=(edit, copy, delete,
                                         None, color1, self.draw_squares_option),
@@ -443,18 +459,18 @@ class MainWindow(QMainWindow, WindowMixin):
         self.display_label_option.setChecked(settings.get(SETTING_PAINT_LABEL, False))
         self.display_label_option.triggered.connect(self.toggle_paint_labels_option)
 
-        add_actions(self.menus.file,                                                                                                                                    # ADJUSTMENT: exclude image deletion from options
-                    (open, open_dir, change_save_dir, open_annotation, copy_prev_bounding, self.menus.recentFiles, save, save_format, save_as, close, reset_all, quit)) # Adjusted by Peter van Lunteren on 3 Aug 2023
-        add_actions(self.menus.help, (help_default, show_info, show_shortcut))
-        add_actions(self.menus.view, (
-            self.auto_saving,
-            self.single_class_mode,
-            self.display_label_option,
-            labels, advanced_mode, None,
-            hide_all, show_all, None,
-            zoom_in, zoom_out, zoom_org, None,
-            fit_window, fit_width, None,
-            light_brighten, light_darken, light_org))
+        # add_actions(self.menus.file,                                                  # ADJUSTMENT: exclude file options from menu
+        #             (copy_prev_bounding, close, reset_all, quit))                     # Adjusted by Peter van Lunteren on 3 Aug 2023
+        # add_actions(self.menus.help, (help_default, show_info, show_shortcut))        # Adjusted by Peter van Lunteren on 19 Sept 2023
+        # add_actions(self.menus.view, (                                                # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     self.auto_saving,                                                         # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     self.single_class_mode,                                                   # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     self.display_label_option,                                                # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     labels, advanced_mode, None,                                              # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     hide_all, show_all, None,                                                 # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     zoom_in, zoom_out, zoom_org, None,                                        # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     fit_window, fit_width, None,                                              # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     light_brighten, light_darken, light_org))                                 # Adjusted by Peter van Lunteren on 19 Sept 2023
 
         self.menus.file.aboutToShow.connect(self.update_file_menu)
 
@@ -472,9 +488,10 @@ class MainWindow(QMainWindow, WindowMixin):
 
                                                                     # ADJUSTMENT: exlude unnecessary buttons
         self.actions.advanced = (                                   # Adjusted by Peter van Lunteren on 13 July 2023
-            open_next_image, open_prev_image, verify, save, None,   # Adjusted by Peter van Lunteren on 13 July 2023
+            open_next_image, open_prev_image, verify, None,         # Adjusted by Peter van Lunteren on 13 July 2023
             create_mode, edit_mode, delete, None,                   # Adjusted by Peter van Lunteren on 13 July 2023
-            zoom_in, zoom, zoom_out, fit_window)                    # Adjusted by Peter van Lunteren on 13 July 2023
+            zoom_in, zoom, zoom_out, fit_window, None,              # Adjusted by Peter van Lunteren on 13 July 2023
+            light_brighten, light, light_darken, light_org)         # Adjusted by Peter van Lunteren on 13 July 2023
         # self.actions.advanced = (                                 # Adjusted by Peter van Lunteren on 13 July 2023
         #     open, open_dir, change_save_dir, open_next_image,     # Adjusted by Peter van Lunteren on 13 July 2023
         #     open_prev_image,                                      # Adjusted by Peter van Lunteren on 13 July 2023
@@ -572,7 +589,9 @@ class MainWindow(QMainWindow, WindowMixin):
         self.set_fit_window()                               # Adjusted by Peter van Lunteren on 13 July 2023
         self.resize(*self.initial_window_size)              # Adjusted by Peter van Lunteren on 13 July 2023
         self.toggle_advanced_mode()                         # Adjusted by Peter van Lunteren on 13 July 2023
+        self.skip_to_next_unverified_file()                 # Adjusted by Peter van Lunteren on 20 Sept 2023
         QApplication.processEvents()                        # Adjusted by Peter van Lunteren on 13 July 2023
+
 
     def keyReleaseEvent(self, event):
         if event.key() == Qt.Key_Control:
@@ -822,7 +841,7 @@ class MainWindow(QMainWindow, WindowMixin):
         if not item:  # If not selected Item, take the first one
             item = self.label_list.item(self.label_list.count() - 1)
 
-        difficult = self.diffc_button.isChecked()
+        # difficult = self.diffc_button.isChecked()                                 # ADJUSTMENT: exclude unnecessary buttons
 
         try:
             shape = self.items_to_shapes[item]
@@ -979,6 +998,16 @@ class MainWindow(QMainWindow, WindowMixin):
     def default_label_combo_selection_changed(self, index):
         self.default_label=self.label_hist[index]
 
+    def skip_to_next_unverified_file(self):                                             # ADJUSTMENT: function to skip to unverified file starting from the beginning of file list
+        next_unverified = self.find_file_to_begin_with()                                # Adjusted by Peter van Lunteren on 20 Sept 2023
+        if next_unverified != '':                                                       # Adjusted by Peter van Lunteren on 20 Sept 2023
+            index_to_start = self.m_img_list.index(next_unverified)                     # Adjusted by Peter van Lunteren on 20 Sept 2023
+            filename = self.m_img_list[index_to_start]                                  # Adjusted by Peter van Lunteren on 20 Sept 2023
+            self.cur_img_idx = index_to_start                                           # Adjusted by Peter van Lunteren on 20 Sept 2023
+            if filename:                                                                # Adjusted by Peter van Lunteren on 20 Sept 2023
+                self.load_file(filename)                                                # Adjusted by Peter van Lunteren on 20 Sept 2023
+            self.scroll_selected_item_to_view()                                         # Adjusted by Peter van Lunteren on 20 Sept 2023
+
     def label_selection_changed(self):
         item = self.current_item()
         if item and self.canvas.editing():
@@ -986,7 +1015,7 @@ class MainWindow(QMainWindow, WindowMixin):
             self.canvas.select_shape(self.items_to_shapes[item])
             shape = self.items_to_shapes[item]
             # Add Chris
-            self.diffc_button.setChecked(shape.difficult)
+            # self.diffc_button.setChecked(shape.difficult)                             # ADJUSTMENT: exclude unnecessary buttons
 
     def label_item_changed(self, item):
         shape = self.items_to_shapes[item]
@@ -1019,7 +1048,7 @@ class MainWindow(QMainWindow, WindowMixin):
             text = self.default_label
 
         # Add Chris
-        self.diffc_button.setChecked(False)
+        # self.diffc_button.setChecked(False)                                                       # ADJUSTMENT: exclude unnecessary buttons
         if text is not None:
             self.prev_label_text = text
             generate_color = generate_color_by_text(text)
@@ -1499,26 +1528,27 @@ class MainWindow(QMainWindow, WindowMixin):
             self.canvas.verified = self.label_file.verified
             self.paint_canvas()
             self.save_file()
-
                                                                                                         # ADJUSTMENT: color single list items after verification
             file_path = ustr(self.file_path)                                                            # Adjusted by Peter van Lunteren on 13 July 2023
             ann = self.get_xml_path(file_path)                                                          # Adjusted by Peter van Lunteren on 12 Aug 2023
             verified_flag = PascalVocReader(ann).verified                                               # Adjusted by Peter van Lunteren on 13 July 2023
             index = self.m_img_list.index(file_path)                                                    # Adjusted by Peter van Lunteren on 13 July 2023
             file_widget_item = self.file_list_widget.item(index)                                        # Adjusted by Peter van Lunteren on 13 July 2023
-            temp_file_path = os.path.join(os.path.dirname(os.path.dirname(self.file_list_txt)),         # Adjusted by Peter van Lunteren on 14 Aug 2023
-                                            "temp-folder", "_gosave.txt")                               # Adjusted by Peter van Lunteren on 14 Aug 2023
-            temp_file = TemporaryTextFile(temp_file_path, "This is a file to notify EcoAssist of the "  # Adjusted by Peter van Lunteren on 14 Aug 2023
-                                            "fact that there was an image verified and that data "      # Adjusted by Peter van Lunteren on 14 Aug 2023
-                                            "should now be written from PASCAL to COCO.")               # Adjusted by Peter van Lunteren on 14 Aug 2023
-            temp_file.create()                                                                          # Adjusted by Peter van Lunteren on 14 Aug 2023
+            labelImg_exchange_dir = LabelImgExchangeDir(os.path.normpath(os.path.join(                  # Adjusted by Peter van Lunteren on 19 Sept 2023
+                                                            os.path.dirname(self.file_list_txt),        # Adjusted by Peter van Lunteren on 19 Sept 2023
+                                                            "labelImg-info")))                          # Adjusted by Peter van Lunteren on 19 Sept 2023
             if verified_flag:                                                                           # Adjusted by Peter van Lunteren on 13 July 2023
                 file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
                 file_widget_item.setCheckState(2)                                                       # Adjusted by Peter van Lunteren on 13 July 2023
+                labelImg_exchange_dir.create_file('+', self.temp_file_unique_idx)                       # Adjusted by Peter van Lunteren on 19 Sept 2023
+                self.temp_file_unique_idx += 1
                 self.open_next_image()                                                                  # Adjusted by Peter van Lunteren on 13 July 2023
             else:                                                                                       # Adjusted by Peter van Lunteren on 18 Sept 2023
                 file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
                 file_widget_item.setCheckState(0)                                                       # Adjusted by Peter van Lunteren on 13 July 2023
+                labelImg_exchange_dir.create_file('-', self.temp_file_unique_idx)                       # Adjusted by Peter van Lunteren on 19 Sept 2023
+                self.temp_file_unique_idx += 1
+
 
     def open_prev_image(self, _value=False):
         # Proceeding prev image without dialog if having any label
@@ -1648,6 +1678,7 @@ class MainWindow(QMainWindow, WindowMixin):
             self.set_clean()
             self.statusBar().showMessage('Saved to  %s' % annotation_file_path)
             self.statusBar().show()
+            import time
 
     def close_file(self, _value=False):
         if not self.may_continue():
@@ -1686,7 +1717,7 @@ class MainWindow(QMainWindow, WindowMixin):
             if discard_changes == QMessageBox.No:
                 return True
             elif discard_changes == QMessageBox.Yes:
-                self.save_file()
+                self.save_file()                                                                                
                 return True
             else:
                 return False
@@ -1810,7 +1841,7 @@ class MainWindow(QMainWindow, WindowMixin):
 
     def toggle_draw_square(self):
         self.canvas.set_drawing_shape_to_square(self.draw_squares_option.isChecked())
-
+    
 def inverted(color):
     return QColor(*[255 - v for v in color.getRgb()])
 
@@ -1823,24 +1854,35 @@ def read(filename, default=None):
     except:
         return default
 
-                                                # ADJUSTMENT: create temporary file to notify EcoAssist that it should convert xml to coco
-class TemporaryTextFile:                        # Adjusted by Peter van Lunteren on 14 Aug 2023
-    def __init__(self, path, content=None):     # Adjusted by Peter van Lunteren on 14 Aug 2023
-        self.path = path                        # Adjusted by Peter van Lunteren on 14 Aug 2023
-        self.content = content                  # Adjusted by Peter van Lunteren on 14 Aug 2023
-                                                # Adjusted by Peter van Lunteren on 14 Aug 2023
-    def create(self):                           # Adjusted by Peter van Lunteren on 14 Aug 2023
-        if not os.path.exists(self.path):       # Adjusted by Peter van Lunteren on 14 Aug 2023
-            with open(self.path, 'w+') as file: # Adjusted by Peter van Lunteren on 14 Aug 2023
-                if self.content:                # Adjusted by Peter van Lunteren on 14 Aug 2023
-                    file.write(self.content)    # Adjusted by Peter van Lunteren on 14 Aug 2023
-                                                # Adjusted by Peter van Lunteren on 14 Aug 2023
-    def delete(self):                           # Adjusted by Peter van Lunteren on 14 Aug 2023
-        if os.path.exists(self.path):           # Adjusted by Peter van Lunteren on 14 Aug 2023
-            os.remove(self.path)                # Adjusted by Peter van Lunteren on 14 Aug 2023
-                                                # Adjusted by Peter van Lunteren on 14 Aug 2023
-    def exists(self):                           # Adjusted by Peter van Lunteren on 14 Aug 2023
-        return os.path.exists(self.path)        # Adjusted by Peter van Lunteren on 14 Aug 2023
+# temporary file which labelImg writes to notify EcoAssist that it should convert xml to coco
+class LabelImgExchangeDir:
+    def __init__(self, dir):
+        self.dir = dir
+        Path(self.dir).mkdir(parents=True, exist_ok=True)
+
+    def create_file(self, content, idx):
+        timestamp_miliseconds = str(str(datetime.date.today()) + str(datetime.datetime.now().strftime('%H%M%S%f'))).replace('-', '')
+        temp_file = os.path.normpath(os.path.join(self.dir, f"{timestamp_miliseconds}-{idx}.txt"))
+        with open(temp_file, 'w') as f:
+            f.write(content)
+        print(f"Written by LabelImg : '{temp_file}' -- With content : '{content}'")
+    
+    def read_file(self, fp):
+        with open(fp, 'r') as f:
+            content = f.read()
+            print(f"Read by EcoAssist   : '{fp}' -- With content : '{content}'")
+            return content
+
+    def delete_file(self, fp):
+        if os.path.exists(fp):
+            os.remove(fp)
+
+    def exist_file(self):
+        filelist = glob.glob(os.path.normpath(os.path.join(self.dir, '*.txt')))
+        for fn in sorted(filelist):
+            return [True, fn]
+        return [False, '']
+
 
 def get_main_app(argv=None):
     """
