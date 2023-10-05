@@ -4,7 +4,7 @@
 # Human in the loop and annotation tool for EcoAssist (https://github.com/PetervanLunteren/EcoAssist).
 # Forked from labelImg (https://github.com/HumanSignal/labelImg).
 # Adjusted by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 20 Sept 2023
+# Latest edit by Peter van Lunteren on 5 Oct 2023
 
 import argparse
 import codecs
@@ -96,7 +96,6 @@ class MainWindow(QMainWindow, WindowMixin):
         self.start_up_var = True                                    # Adjusted by Peter van Lunteren on 13 July 2023
         self.start_up_counter = 0                                   # Adjusted by Peter van Lunteren on 13 July 2023
         self.initial_window_size = (1000, 750)                      # Adjusted by Peter van Lunteren on 13 July 2023
-        self.temp_file_unique_idx = 1                               # Adjusted by Peter van Lunteren on 20 Sept 2023
 
         # Load setting in the main thread
         self.settings = Settings()
@@ -1534,20 +1533,17 @@ class MainWindow(QMainWindow, WindowMixin):
             verified_flag = PascalVocReader(ann).verified                                               # Adjusted by Peter van Lunteren on 13 July 2023
             index = self.m_img_list.index(file_path)                                                    # Adjusted by Peter van Lunteren on 13 July 2023
             file_widget_item = self.file_list_widget.item(index)                                        # Adjusted by Peter van Lunteren on 13 July 2023
-            labelImg_exchange_dir = LabelImgExchangeDir(os.path.normpath(os.path.join(                  # Adjusted by Peter van Lunteren on 19 Sept 2023
-                                                            os.path.dirname(self.file_list_txt),        # Adjusted by Peter van Lunteren on 19 Sept 2023
-                                                            "labelImg-info")))                          # Adjusted by Peter van Lunteren on 19 Sept 2023
             if verified_flag:                                                                           # Adjusted by Peter van Lunteren on 13 July 2023
                 file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
                 file_widget_item.setCheckState(2)                                                       # Adjusted by Peter van Lunteren on 13 July 2023
-                labelImg_exchange_dir.create_file('+', self.temp_file_unique_idx)                       # Adjusted by Peter van Lunteren on 19 Sept 2023
-                self.temp_file_unique_idx += 1
+                print("<EA>+<EA>")                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
+                sys.stdout.flush()                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
                 self.open_next_image()                                                                  # Adjusted by Peter van Lunteren on 13 July 2023
             else:                                                                                       # Adjusted by Peter van Lunteren on 18 Sept 2023
                 file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
                 file_widget_item.setCheckState(0)                                                       # Adjusted by Peter van Lunteren on 13 July 2023
-                labelImg_exchange_dir.create_file('-', self.temp_file_unique_idx)                       # Adjusted by Peter van Lunteren on 19 Sept 2023
-                self.temp_file_unique_idx += 1
+                print("<EA>-<EA>")                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
+                sys.stdout.flush()                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
 
 
     def open_prev_image(self, _value=False):
