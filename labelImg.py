@@ -807,9 +807,9 @@ class MainWindow(QMainWindow, WindowMixin):
         item.setCheckState(Qt.Checked)
         item.setBackground(generate_color_by_text(shape.label))
         self.items_to_shapes[item] = shape
-        print('darren add lable ' + str(self.items_to_shapes))
-        print('darren add item ' + str(item))
-        print('darren add shape ' + str(shape))
+        # print('darren add lable ' + str(self.items_to_shapes)) # DEBUG
+        # print('darren add item ' + str(item))
+        # print('darren add shape ' + str(shape))
         self.shapes_to_items[shape] = item
         self.label_list.addItem(item)
         for action in self.actions.onShapesPresent:
