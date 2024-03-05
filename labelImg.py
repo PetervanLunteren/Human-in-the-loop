@@ -4,7 +4,7 @@
 # Human in the loop and annotation tool for EcoAssist (https://github.com/PetervanLunteren/EcoAssist).
 # Forked from labelImg (https://github.com/HumanSignal/labelImg).
 # Adjusted by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 5 Oct 2023
+# Latest edit by Peter van Lunteren on 5 March 2024
 
 import argparse
 import codecs
@@ -22,7 +22,7 @@ import csv                                      # Adjusted by Peter van Lunteren
 import datetime                                 # Adjusted by Peter van Lunteren on 6 July 2023
 from pathlib import Path                        # Adjusted by Peter van Lunteren on 6 July 2023
 import xml.etree.cElementTree as ET             # Adjusted by Peter van Lunteren on 1 Aug 2023
-from PySide6.QtWidgets import QAbstractItemView # DEBUG
+from PySide6.QtWidgets import QAbstractItemView # Adjusted by Peter van Lunteren on 5 March 2023
 
 from PySide6.QtGui import QTextLine, QAction, QImage, QColor, QCursor, QPixmap, QImageReader
 from PySide6.QtCore import QObject, Qt, QPoint, QSize, QByteArray, QTimer, QFileInfo, QPointF, QProcess
@@ -448,8 +448,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.actions.advanced = (                                   # Adjusted by Peter van Lunteren on 13 July 2023
             open_next_image, open_prev_image, verify, None,         # Adjusted by Peter van Lunteren on 13 July 2023
             create_mode, edit_mode, delete, None,                   # Adjusted by Peter van Lunteren on 13 July 2023
-            zoom_in, zoom, zoom_out, fit_window, None)#, # DEBUG              # Adjusted by Peter van Lunteren on 13 July 2023
-            # light_brighten, light, light_darken, light_org)   DEBUG      # Adjusted by Peter van Lunteren on 13 July 2023
+            zoom_in, zoom, zoom_out, fit_window, None)              # Adjusted by Peter van Lunteren on 13 July 2023
         # self.actions.advanced = (                                 # Adjusted by Peter van Lunteren on 13 July 2023
         #     open, open_dir, change_save_dir, open_next_image,     # Adjusted by Peter van Lunteren on 13 July 2023
         #     open_prev_image,                                      # Adjusted by Peter van Lunteren on 13 July 2023
@@ -807,9 +806,6 @@ class MainWindow(QMainWindow, WindowMixin):
         item.setCheckState(Qt.Checked)
         item.setBackground(generate_color_by_text(shape.label))
         self.items_to_shapes[item] = shape
-        # print('darren add lable ' + str(self.items_to_shapes)) # DEBUG
-        # print('darren add item ' + str(item))
-        # print('darren add shape ' + str(shape))
         self.shapes_to_items[shape] = item
         self.label_list.addItem(item)
         for action in self.actions.onShapesPresent:
@@ -1096,10 +1092,10 @@ class MainWindow(QMainWindow, WindowMixin):
                         file_widget_item = self.file_list_widget.item(index)                                        # Adjusted by Peter van Lunteren on 13 July 2023
                         if verified_flag:                                                                           # Adjusted by Peter van Lunteren on 13 July 2023
                             file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
-                            file_widget_item.setCheckState(Qt.CheckState(2))        #DEBUG                                               # Adjusted by Peter van Lunteren on 13 July 2023
+                            file_widget_item.setCheckState(Qt.CheckState(2))                                        # Adjusted by Peter van Lunteren on 13 July 2023
                         else:                                                                                       # Adjusted by Peter van Lunteren on 13 July 2023
                             file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
-                            file_widget_item.setCheckState(Qt.CheckState(0))            # DEBUG                                            # Adjusted by Peter van Lunteren on 13 July 2023
+                            file_widget_item.setCheckState(Qt.CheckState(0))                                        # Adjusted by Peter van Lunteren on 13 July 2023
                 # self.resize(*self.initial_window_size)                                                            # Adjusted by Peter van Lunteren on 13 July 2023
                 QApplication.processEvents()                                                                        # Adjusted by Peter van Lunteren on 13 July 2023
                 if self.start_up_counter == 1:                                                                      # Adjusted by Peter van Lunteren on 13 July 2023
@@ -1412,20 +1408,20 @@ class MainWindow(QMainWindow, WindowMixin):
             self.paint_canvas()
             self.save_file()
                                                                                                         # ADJUSTMENT: color single list items after verification
-            file_path = self.file_path            # DEBUG                                                # Adjusted by Peter van Lunteren on 13 July 2023
+            file_path = self.file_path                                                                  # Adjusted by Peter van Lunteren on 13 July 2023
             ann = self.get_xml_path(file_path)                                                          # Adjusted by Peter van Lunteren on 12 Aug 2023
             verified_flag = PascalVocReader(ann).verified                                               # Adjusted by Peter van Lunteren on 13 July 2023
             index = self.m_img_list.index(file_path)                                                    # Adjusted by Peter van Lunteren on 13 July 2023
             file_widget_item = self.file_list_widget.item(index)                                        # Adjusted by Peter van Lunteren on 13 July 2023
             if verified_flag:                                                                           # Adjusted by Peter van Lunteren on 13 July 2023
                 file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
-                file_widget_item.setCheckState(Qt.CheckState(2))                 # DEBUG                                      # Adjusted by Peter van Lunteren on 13 July 2023
+                file_widget_item.setCheckState(Qt.CheckState(2))                                        # Adjusted by Peter van Lunteren on 13 July 2023
                 print("<EA>+<EA>")                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
                 sys.stdout.flush()                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
                 self.open_next_image()                                                                  # Adjusted by Peter van Lunteren on 13 July 2023
             else:                                                                                       # Adjusted by Peter van Lunteren on 18 Sept 2023
                 file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
-                file_widget_item.setCheckState(Qt.CheckState(0))                  # DEBUG                                     # Adjusted by Peter van Lunteren on 13 July 2023
+                file_widget_item.setCheckState(Qt.CheckState(0))                                        # Adjusted by Peter van Lunteren on 13 July 2023
                 print("<EA>-<EA>")                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
                 sys.stdout.flush()                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
 
