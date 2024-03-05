@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
+# Human in the loop and annotation tool for EcoAssist (https://github.com/PetervanLunteren/EcoAssist).
+# Forked from labelImg (https://github.com/HumanSignal/labelImg).
+# Adjusted by Peter van Lunteren
+# Latest edit by Peter van Lunteren on 5 Oct 2023
+
 import argparse
 import codecs
 import distutils.spawn
@@ -11,11 +17,19 @@ import shutil
 import webbrowser as wb
 from functools import partial
 
+                                                # ADJUSTMENT: import extra packages
+import csv                                      # Adjusted by Peter van Lunteren on 6 July 2023
+import datetime                                 # Adjusted by Peter van Lunteren on 6 July 2023
+from pathlib import Path                        # Adjusted by Peter van Lunteren on 6 July 2023
+import xml.etree.cElementTree as ET             # Adjusted by Peter van Lunteren on 1 Aug 2023
+from PySide6.QtWidgets import QAbstractItemView # DEBUG
+
 from PySide6.QtGui import QTextLine, QAction, QImage, QColor, QCursor, QPixmap, QImageReader
 from PySide6.QtCore import QObject, Qt, QPoint, QSize, QByteArray, QTimer, QFileInfo, QPointF, QProcess
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QCheckBox, QLineEdit, QHBoxLayout, QWidget, QToolButton, \
     QListWidget, QDockWidget, QScrollArea, QWidgetAction, QMenu, QApplication, QLabel, QMessageBox, QFileDialog, \
     QListWidgetItem
+
 
 from libs.combobox import ComboBox
 from libs.resources import *
@@ -63,9 +77,16 @@ class WindowMixin(object):
 class MainWindow(QMainWindow, WindowMixin):
     FIT_WINDOW, FIT_WIDTH, MANUAL_ZOOM = list(range(3))
 
-    def __init__(self, default_filename=None, default_prefdef_class_file=None, default_save_dir=None):
+    def __init__(self, file_list_txt, default_filename=None, default_prefdef_class_file=None, default_save_dir=None):
         super(MainWindow, self).__init__()
         self.setWindowTitle(__appname__)
+
+                                                                    # ADJUSTMENT: added class variables
+        self.file_list_txt = file_list_txt                          # Adjusted by Peter van Lunteren on 6 July 2023
+        self.file_to_begin_with = self.find_file_to_begin_with()    # Adjusted by Peter van Lunteren on 1 Aug 2023
+        self.start_up_var = True                                    # Adjusted by Peter van Lunteren on 13 July 2023
+        self.start_up_counter = 0                                   # Adjusted by Peter van Lunteren on 13 July 2023
+        self.initial_window_size = (1000, 750)                      # Adjusted by Peter van Lunteren on 13 July 2023
 
         # Load setting in the main thread
         self.settings = Settings()
@@ -88,7 +109,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.label_hist = []
         self.last_open_dir = None
         self.cur_img_idx = 0
-        self.img_count = 1
+        self.img_count = len(self.m_img_list)
 
         # Whether we need to save or not.
         self.dirty = False
@@ -121,15 +142,23 @@ class MainWindow(QMainWindow, WindowMixin):
         use_default_label_container.setLayout(use_default_label_qhbox_layout)
 
         # Create a widget for edit and diffc button
-        self.diffc_button = QCheckBox(get_str('useDifficult'))
-        self.diffc_button.setChecked(False)
-        self.diffc_button.stateChanged.connect(self.button_state)
+        # self.diffc_button = QCheckBox(get_str('useDifficult'))                                        # ADJUSTMENT: exclude unnecessary buttons
+        # self.diffc_button.setChecked(False)                                                           # Adjusted by Peter van Lunteren on 20 Sept 2023
+        # self.diffc_button.stateChanged.connect(self.button_state)                                     # Adjusted by Peter van Lunteren on 20 Sept 2023
+
+        self.find_next_unverified_button = QPushButton('Jump to unverified image', self)                # ADJUSTMENT: add buttons to skip to unverified image
+        self.find_next_unverified_button.setToolTip('Sometimes it can be difficult to locate '          # Adjusted by Peter van Lunteren on 20 Sept 2023
+                                                    'images that were accidently left unverified. '     # Adjusted by Peter van Lunteren on 20 Sept 2023
+                                                    'With this button you can locate them, starting '   # Adjusted by Peter van Lunteren on 20 Sept 2023
+                                                    'from the beginning.')                              # Adjusted by Peter van Lunteren on 20 Sept 2023
+        self.find_next_unverified_button.move(100,70)                                                   # Adjusted by Peter van Lunteren on 20 Sept 2023
+
         self.edit_button = QToolButton()
         self.edit_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
 
         # Add some of widgets to list_layout
         list_layout.addWidget(self.edit_button)
-        list_layout.addWidget(self.diffc_button)
+        # list_layout.addWidget(self.diffc_button)                                                      # Adjusted by Peter van Lunteren on 20 Sept 2023
         list_layout.addWidget(use_default_label_container)
 
         # Create and add combobox for showing unique labels in group
@@ -141,13 +170,12 @@ class MainWindow(QMainWindow, WindowMixin):
         label_list_container = QWidget()
         label_list_container.setLayout(list_layout)
         self.label_list.itemActivated.connect(self.label_selection_changed)
+        self.find_next_unverified_button.clicked.connect(self.skip_to_next_unverified_file)             # Adjusted by Peter van Lunteren on 20 Sept 2023
         self.label_list.itemSelectionChanged.connect(self.label_selection_changed)
         self.label_list.itemDoubleClicked.connect(self.edit_label)
         # Connect to itemChanged to detect checkbox changes.
         self.label_list.itemChanged.connect(self.label_item_changed)
         list_layout.addWidget(self.label_list)
-
-
 
         self.dock = QDockWidget(get_str('boxLabelText'), self)
         self.dock.setObjectName(get_str('labels'))
@@ -157,6 +185,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.file_list_widget.itemDoubleClicked.connect(self.file_item_double_clicked)
         file_list_layout = QVBoxLayout()
         file_list_layout.setContentsMargins(0, 0, 0, 0)
+        file_list_layout.addWidget(self.find_next_unverified_button)                                    # Adjusted by Peter van Lunteren on 20 Sept 2023
+
         file_list_layout.addWidget(self.file_list_widget)
         file_list_container = QWidget()
         file_list_container.setLayout(file_list_layout)
@@ -244,8 +274,8 @@ class MainWindow(QMainWindow, WindowMixin):
                          'Ctrl+Shift+S', 'save-as', get_str('saveAsDetail'), enabled=False)
 
         close = action(get_str('closeCur'), self.close_file, 'Ctrl+W', 'close', get_str('closeCurDetail'))
-
-        delete_image = action(get_str('deleteImg'), self.delete_image, 'Ctrl+Shift+D', 'close', get_str('deleteImgDetail'))
+                                                                                                                                # ADJUSTMENT: exclude image deletion from options
+        # delete_image = action(get_str('deleteImg'), self.delete_image, 'Ctrl+Shift+D', 'close', get_str('deleteImgDetail'))   # Adjusted by Peter van Lunteren on 3 Aug 2023
 
         reset_all = action(get_str('resetAll'), self.reset_all, None, 'resetall', get_str('resetAllDetail'))
 
@@ -254,8 +284,8 @@ class MainWindow(QMainWindow, WindowMixin):
 
         create_mode = action(get_str('crtBox'), self.set_create_mode,
                              'w', 'new', get_str('crtBoxDetail'), enabled=False)
-        edit_mode = action(get_str('editBox'), self.set_edit_mode,
-                           'Ctrl+J', 'edit', get_str('editBoxDetail'), enabled=False)
+        edit_mode = action(get_str('editBox'), self.set_edit_mode,                                                              # ADJUSTMENT: changed edit shortcut to e
+                           's', 'edit', get_str('editBoxDetail'), enabled=False)                                                # Adjusted by Peter van Lunteren on 20 Sept 2023
 
         create = action(get_str('crtBox'), self.create_shape,
                         'w', 'new', get_str('crtBoxDetail'), enabled=False)
@@ -342,7 +372,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.draw_squares_option.triggered.connect(self.toggle_draw_square)
 
         # Store actions for further handling.
-        self.actions = Struct(save=save, save_format=save_format, saveAs=save_as, open=open, close=close, resetAll=reset_all, deleteImg=delete_image,
+                                                                                                                                # ADJUSTMENT: exclude image deletion and save from options
+        self.actions = Struct(save=save, save_format=save_format, saveAs=save_as, open=open, close=close, resetAll=reset_all,   # Adjusted by Peter van Lunteren on 3 Aug 2023
                               lineColor=color1, create=create, delete=delete, edit=edit, copy=copy,
                               createMode=create_mode, editMode=edit_mode, advancedMode=advanced_mode,
                               shapeLineColor=shape_line_color, shapeFillColor=shape_fill_color,
@@ -350,7 +381,7 @@ class MainWindow(QMainWindow, WindowMixin):
                               fitWindow=fit_window, fitWidth=fit_width,
                               zoomActions=zoom_actions,
                               fileMenuActions=(
-                                  open, open_dir, save, save_as, close, reset_all, quit),
+                                  open, open_dir, save_as, close, reset_all, quit),                                              # Adjusted by Peter van Lunteren on 19 Sept 2023
                               beginner=(), advanced=(),
                               editMenu=(edit, copy, delete,
                                         None, color1, self.draw_squares_option),
@@ -373,6 +404,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.auto_saving = QAction(get_str('autoSaveMode'), self)
         self.auto_saving.setCheckable(True)
         self.auto_saving.setChecked(settings.get(SETTING_AUTO_SAVE, False))
+                                            # ADJUSTMENT: enable auto save mode by default
+        self.auto_saving.setChecked(True)   # Adjusted by Peter van Lunteren on 03 Aug 2023
         # Sync single class mode from PR#106
         self.single_class_mode = QAction(get_str('singleClsMode'), self)
         self.single_class_mode.setShortcut("Ctrl+Shift+S")
@@ -386,17 +419,18 @@ class MainWindow(QMainWindow, WindowMixin):
         self.display_label_option.setChecked(settings.get(SETTING_PAINT_LABEL, False))
         self.display_label_option.triggered.connect(self.toggle_paint_labels_option)
 
-        add_actions(self.menus.file,
-                    (open, open_dir, change_save_dir, open_annotation, copy_prev_bounding, self.menus.recentFiles, save, save_format, save_as, close, reset_all, delete_image, quit))
-        add_actions(self.menus.help, (help_default, show_info, show_shortcut))
-        add_actions(self.menus.view, (
-            self.auto_saving,
-            self.single_class_mode,
-            self.display_label_option,
-            labels, advanced_mode, None,
-            hide_all, show_all, None,
-            zoom_in, zoom_out, zoom_org, None,
-            fit_window, fit_width))
+        # add_actions(self.menus.file,                                                  # ADJUSTMENT: exclude file options from menu
+        #             (copy_prev_bounding, close, reset_all, quit))                     # Adjusted by Peter van Lunteren on 3 Aug 2023
+        # add_actions(self.menus.help, (help_default, show_info, show_shortcut))        # Adjusted by Peter van Lunteren on 19 Sept 2023
+        # add_actions(self.menus.view, (                                                # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     self.auto_saving,                                                         # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     self.single_class_mode,                                                   # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     self.display_label_option,                                                # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     labels, advanced_mode, None,                                              # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     hide_all, show_all, None,                                                 # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     zoom_in, zoom_out, zoom_org, None,                                        # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     fit_window, fit_width, None,                                              # Adjusted by Peter van Lunteren on 19 Sept 2023
+        #     light_brighten, light_darken, light_org))                                 # Adjusted by Peter van Lunteren on 19 Sept 2023
 
         self.menus.file.aboutToShow.connect(self.update_file_menu)
 
@@ -410,11 +444,18 @@ class MainWindow(QMainWindow, WindowMixin):
         self.actions.beginner = (
             open, open_dir, change_save_dir, open_next_image, open_prev_image, verify, save, save_format, None, create, copy, delete, None,
             zoom_in, zoom, zoom_out, fit_window, fit_width)
-
-        self.actions.advanced = (
-            open, open_dir, change_save_dir, open_next_image, open_prev_image, save, save_format, None,
-            create_mode, edit_mode, None,
-            hide_all, show_all)
+                                                                    # ADJUSTMENT: exlude unnecessary buttons
+        self.actions.advanced = (                                   # Adjusted by Peter van Lunteren on 13 July 2023
+            open_next_image, open_prev_image, verify, None,         # Adjusted by Peter van Lunteren on 13 July 2023
+            create_mode, edit_mode, delete, None,                   # Adjusted by Peter van Lunteren on 13 July 2023
+            zoom_in, zoom, zoom_out, fit_window, None)#, # DEBUG              # Adjusted by Peter van Lunteren on 13 July 2023
+            # light_brighten, light, light_darken, light_org)   DEBUG      # Adjusted by Peter van Lunteren on 13 July 2023
+        # self.actions.advanced = (                                 # Adjusted by Peter van Lunteren on 13 July 2023
+        #     open, open_dir, change_save_dir, open_next_image,     # Adjusted by Peter van Lunteren on 13 July 2023
+        #     open_prev_image,                                      # Adjusted by Peter van Lunteren on 13 July 2023
+        #     save, save_format, None,                              # Adjusted by Peter van Lunteren on 13 July 2023
+        #     create_mode, edit_mode, None,                         # Adjusted by Peter van Lunteren on 13 July 2023
+        #     hide_all, show_all)                                   # Adjusted by Peter van Lunteren on 13 July 2023
 
         self.statusBar().showMessage('%s started.' % __appname__)
         self.statusBar().show()
@@ -475,6 +516,19 @@ class MainWindow(QMainWindow, WindowMixin):
         if self.file_path and os.path.isdir(self.file_path):
             self.open_dir_dialog(dir_path=self.file_path, silent=True)
 
+                                                            # ADJUSTMENT: set window settings when opening
+        self.open_next_image()                              # Adjusted by Peter van Lunteren on 13 July 2023
+        if self.file_to_begin_with != "":                   # Adjusted by Peter van Lunteren on 13 July 2023
+            self.load_file(self.file_to_begin_with)         # Adjusted by Peter van Lunteren on 13 July 2023
+        else:                                               # Adjusted by Peter van Lunteren on 13 July 2023
+            self.load_file(self.m_img_list[0])              # Adjusted by Peter van Lunteren on 13 July 2023
+        self.set_fit_window()                               # Adjusted by Peter van Lunteren on 13 July 2023
+        self.resize(*self.initial_window_size)              # Adjusted by Peter van Lunteren on 13 July 2023
+        self.toggle_advanced_mode()                         # Adjusted by Peter van Lunteren on 13 July 2023
+        self.skip_to_next_unverified_file()                 # Adjusted by Peter van Lunteren on 20 Sept 2023
+        QApplication.processEvents()                        # Adjusted by Peter van Lunteren on 13 July 2023
+
+
     def keyReleaseEvent(self, event):
         if event.key() == Qt.Key_Control:
             self.canvas.set_drawing_shape_to_square(False)
@@ -483,6 +537,13 @@ class MainWindow(QMainWindow, WindowMixin):
         if event.key() == Qt.Key_Control:
             # Draw rectangle if Ctrl is pressed
             self.canvas.set_drawing_shape_to_square(True)
+
+                                                                                                        # ADJUSTMENT: set scroll area to selected list item
+    def scroll_selected_item_to_view(self):                                                             # Adjusted by Peter van Lunteren on 14 Aug 2023
+        selected_items = self.file_list_widget.selectedItems()                                          # Adjusted by Peter van Lunteren on 14 Aug 2023
+        if selected_items:                                                                              # Adjusted by Peter van Lunteren on 14 Aug 2023
+            self.file_list_widget.scrollToItem(selected_items[0], QAbstractItemView.PositionAtCenter)   # Adjusted by Peter van Lunteren on 14 Aug 2023
+
 
     # Support Functions #
     def set_format(self, save_format):
@@ -714,7 +775,7 @@ class MainWindow(QMainWindow, WindowMixin):
         if not item:  # If not selected Item, take the first one
             item = self.label_list.item(self.label_list.count() - 1)
 
-        difficult = self.diffc_button.isChecked()
+        # difficult = self.diffc_button.isChecked()                                 # ADJUSTMENT: exclude unnecessary buttons
 
         shape = self.items_to_shapes[item]
         if difficult != shape.difficult:
@@ -821,6 +882,8 @@ class MainWindow(QMainWindow, WindowMixin):
         shapes = [format_shape(shape) for shape in self.canvas.shapes]
         # Can add different annotation formats here
         try:
+                                                                            # ADJUSTMENT: change save path so that it saves the xml in the temporary folder
+            annotation_file_path = self.get_xml_path(annotation_file_path)  # Adjusted by Peter van Lunteren on 11 Aug 2023
             if self.label_file_format == LabelFileFormat.PASCAL_VOC:
                 if annotation_file_path[-4:].lower() != ".xml":
                     annotation_file_path += XML_EXT
@@ -860,13 +923,23 @@ class MainWindow(QMainWindow, WindowMixin):
             else:
                 self.label_list.item(i).setCheckState(Qt.CheckState(2))
 
+    def skip_to_next_unverified_file(self):                                             # ADJUSTMENT: function to skip to unverified file starting from the beginning of file list
+        next_unverified = self.find_file_to_begin_with()                                # Adjusted by Peter van Lunteren on 20 Sept 2023
+        if next_unverified != '':                                                       # Adjusted by Peter van Lunteren on 20 Sept 2023
+            index_to_start = self.m_img_list.index(next_unverified)                     # Adjusted by Peter van Lunteren on 20 Sept 2023
+            filename = self.m_img_list[index_to_start]                                  # Adjusted by Peter van Lunteren on 20 Sept 2023
+            self.cur_img_idx = index_to_start                                           # Adjusted by Peter van Lunteren on 20 Sept 2023
+            if filename:                                                                # Adjusted by Peter van Lunteren on 20 Sept 2023
+                self.load_file(filename)                                                # Adjusted by Peter van Lunteren on 20 Sept 2023
+            self.scroll_selected_item_to_view()                                         # Adjusted by Peter van Lunteren on 20 Sept 2023
+
     def label_selection_changed(self):
         item = self.current_item()
         if item and self.canvas.editing() and (item in self.items_to_shapes):
             self._no_selection_slot = True
             self.canvas.select_shape(self.items_to_shapes[item])
             shape = self.items_to_shapes[item]
-            self.diffc_button.setChecked(shape.difficult)
+            # self.diffc_button.setChecked(shape.difficult)                             # ADJUSTMENT: exclude unnecessary buttons
 
     def label_item_changed(self, item):
         shape = self.items_to_shapes[item]
@@ -899,7 +972,7 @@ class MainWindow(QMainWindow, WindowMixin):
             text = self.default_label_text_line.text()
 
         # Add Chris
-        self.diffc_button.setChecked(False)
+        # self.diffc_button.setChecked(False)                                                       # ADJUSTMENT: exclude unnecessary buttons
         if text is not None:
             self.prev_label_text = text
             generate_color = generate_color_by_text(text)
@@ -1013,6 +1086,26 @@ class MainWindow(QMainWindow, WindowMixin):
                 index = self.m_img_list.index(abs_file_path)
                 file_widget_item = self.file_list_widget.item(index)
                 file_widget_item.setSelected(True)
+
+                                                                                                                    # ADJUSTMENT: color all list items at opening
+                if self.start_up_var:                                                                               # Adjusted by Peter van Lunteren on 13 July 2023
+                    for img in self.m_img_list:                                                                     # Adjusted by Peter van Lunteren on 13 July 2023
+                        ann = self.get_xml_path(img)                                                                # Adjusted by Peter van Lunteren on 12 Aug 2023
+                        verified_flag = PascalVocReader(ann).verified                                               # Adjusted by Peter van Lunteren on 13 July 2023
+                        index = self.m_img_list.index(img)                                                          # Adjusted by Peter van Lunteren on 13 July 2023
+                        file_widget_item = self.file_list_widget.item(index)                                        # Adjusted by Peter van Lunteren on 13 July 2023
+                        if verified_flag:                                                                           # Adjusted by Peter van Lunteren on 13 July 2023
+                            file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
+                            file_widget_item.setCheckState(Qt.CheckState(2))        #DEBUG                                               # Adjusted by Peter van Lunteren on 13 July 2023
+                        else:                                                                                       # Adjusted by Peter van Lunteren on 13 July 2023
+                            file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
+                            file_widget_item.setCheckState(Qt.CheckState(0))            # DEBUG                                            # Adjusted by Peter van Lunteren on 13 July 2023
+                # self.resize(*self.initial_window_size)                                                            # Adjusted by Peter van Lunteren on 13 July 2023
+                QApplication.processEvents()                                                                        # Adjusted by Peter van Lunteren on 13 July 2023
+                if self.start_up_counter == 1:                                                                      # Adjusted by Peter van Lunteren on 13 July 2023
+                    self.start_up_var = False                                                                       # Adjusted by Peter van Lunteren on 13 July 2023
+                self.start_up_counter += 1                                                                          # Adjusted by Peter van Lunteren on 13 July 2023
+
             else:
                 self.file_list_widget.clear()
                 self.m_img_list.clear()
@@ -1083,9 +1176,13 @@ class MainWindow(QMainWindow, WindowMixin):
     def show_bounding_box_from_annotation_file(self, file_path):
         if self.default_save_dir is not None:
             basename = os.path.basename(os.path.splitext(file_path)[0])
-            xml_path = os.path.join(self.default_save_dir, basename + XML_EXT)
-            txt_path = os.path.join(self.default_save_dir, basename + TXT_EXT)
-            json_path = os.path.join(self.default_save_dir, basename + JSON_EXT)
+                                                                                                                                                    # ADJUSTMENT: always look for annotation file in same folder as image, makes working with subfolder possible
+            xml_path = self.get_xml_path(file_path, ext = XML_EXT)                                                                                  # Adjusted by Peter van Lunteren on 12 Aug 2023
+            txt_path = self.get_xml_path(file_path, ext = TXT_EXT)                                                                                  # Adjusted by Peter van Lunteren on 12 Aug 2023
+            json_path = self.get_xml_path(file_path, ext = JSON_EXT)                                                                                # Adjusted by Peter van Lunteren on 12 Aug 2023
+            # xml_path = os.path.join(self.default_save_dir, basename + XML_EXT)                                                                    # Adjusted by Peter van Lunteren on 7 July 2023
+            # txt_path = os.path.join(self.default_save_dir, basename + TXT_EXT)                                                                    # Adjusted by Peter van Lunteren on 7 July 2023
+            # json_path = os.path.join(self.default_save_dir, basename + JSON_EXT)                                                                  # Adjusted by Peter van Lunteren on 7 July 2023
 
             """Annotation file priority:
             PascalXML > YOLO
@@ -1240,6 +1337,42 @@ class MainWindow(QMainWindow, WindowMixin):
             target_dir_path = default_open_dir_path
         self.last_open_dir = target_dir_path
         self.import_dir_images(target_dir_path)
+        self.default_save_dir = target_dir_path
+        if self.file_path:
+            self.show_bounding_box_from_annotation_file(file_path=self.file_path)
+
+                                                                                        # ADJUSTMENT: function to check if xml is verified
+    def check_verification_status(self, xml_file):                                      # Adjusted by Peter van Lunteren on 1 Aug 2023
+        tree = ET.parse(xml_file)                                                       # Adjusted by Peter van Lunteren on 1 Aug 2023
+        root = tree.getroot()                                                           # Adjusted by Peter van Lunteren on 1 Aug 2023
+        try:                                                                            # Adjusted by Peter van Lunteren on 1 Aug 2023
+            verification_status = True if root.attrib['verified'] == 'yes' else False   # Adjusted by Peter van Lunteren on 1 Aug 2023
+        except:                                                                         # Adjusted by Peter van Lunteren on 1 Aug 2023
+            verification_status = False                                                 # Adjusted by Peter van Lunteren on 1 Aug 2023
+        return verification_status                                                      # Adjusted by Peter van Lunteren on 1 Aug 2023
+
+                                                                                        # ADJUSTMENT: loop through selected xmls and find the first image not verified
+    def find_file_to_begin_with(self):                                                  # Adjusted by Peter van Lunteren on 1 Aug 2023
+        file_to_begin_with = ""                                                         # Adjusted by Peter van Lunteren on 1 Aug 2023
+        with open(self.file_list_txt) as f:                                             # Adjusted by Peter van Lunteren on 1 Aug 2023
+            for line in f:                                                              # Adjusted by Peter van Lunteren on 1 Aug 2023
+                img = line.rstrip()                                                     # Adjusted by Peter van Lunteren on 1 Aug 2023
+                xml_file = self.get_xml_path(img.rstrip())                              # Adjusted by Peter van Lunteren on 12 Aug 2023
+                verification_status = self.check_verification_status(xml_file)          # Adjusted by Peter van Lunteren on 1 Aug 2023
+                if not verification_status:                                             # Adjusted by Peter van Lunteren on 1 Aug 2023
+                    file_to_begin_with = img                                            # Adjusted by Peter van Lunteren on 1 Aug 2023
+                    break                                                               # Adjusted by Peter van Lunteren on 1 Aug 2023
+        return file_to_begin_with                                                       # Adjusted by Peter van Lunteren on 1 Aug 2023
+    
+                                                                                        # ADJUSTMENT: get xml path with temp-folder squeezed in
+    def get_xml_path(self, path, ext = None):                                           # Adjusted by Peter van Lunteren on 12 Aug 2023
+        head_path = os.path.dirname(os.path.dirname(self.file_list_txt))                # Adjusted by Peter van Lunteren on 12 Aug 2023
+        tail_path = os.path.splitext(os.path.relpath(path, head_path))                  # Adjusted by Peter van Lunteren on 12 Aug 2023
+        if ext == None:                                                                 # Adjusted by Peter van Lunteren on 12 Aug 2023
+            xml_path = os.path.join(head_path, "temp-folder", tail_path[0] + XML_EXT)   # Adjusted by Peter van Lunteren on 12 Aug 2023
+        else:                                                                           # Adjusted by Peter van Lunteren on 12 Aug 2023
+            xml_path = os.path.join(head_path, "temp-folder", tail_path[0] + ext)       # Adjusted by Peter van Lunteren on 12 Aug 2023
+        return xml_path                                                                 # Adjusted by Peter van Lunteren on 12 Aug 2023
 
     def import_dir_images(self, dir_path):
         if not self.may_continue() or not dir_path:
@@ -1249,7 +1382,12 @@ class MainWindow(QMainWindow, WindowMixin):
         self.dir_name = dir_path
         self.file_path = None
         self.file_list_widget.clear()
-        self.m_img_list = self.scan_all_images(dir_path)
+
+                                                                                        # ADJUSTMENT: open only the files in the file_list_txt file
+        # self.m_img_list = self.scan_all_images(dir_path)                              # Adjusted by Peter van Lunteren on 6 July 2023
+        with open(self.file_list_txt) as f:                                             # Adjusted by Peter van Lunteren on 6 July 2023
+            self.m_img_list = [line.rstrip() for line in f]                             # Adjusted by Peter van Lunteren on 6 July 2023
+
         self.img_count = len(self.m_img_list)
         self.open_next_image()
         for imgPath in self.m_img_list:
@@ -1273,6 +1411,24 @@ class MainWindow(QMainWindow, WindowMixin):
             self.canvas.verified = self.label_file.verified
             self.paint_canvas()
             self.save_file()
+                                                                                                        # ADJUSTMENT: color single list items after verification
+            file_path = self.file_path            # DEBUG                                                # Adjusted by Peter van Lunteren on 13 July 2023
+            ann = self.get_xml_path(file_path)                                                          # Adjusted by Peter van Lunteren on 12 Aug 2023
+            verified_flag = PascalVocReader(ann).verified                                               # Adjusted by Peter van Lunteren on 13 July 2023
+            index = self.m_img_list.index(file_path)                                                    # Adjusted by Peter van Lunteren on 13 July 2023
+            file_widget_item = self.file_list_widget.item(index)                                        # Adjusted by Peter van Lunteren on 13 July 2023
+            if verified_flag:                                                                           # Adjusted by Peter van Lunteren on 13 July 2023
+                file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
+                file_widget_item.setCheckState(Qt.CheckState(2))                 # DEBUG                                      # Adjusted by Peter van Lunteren on 13 July 2023
+                print("<EA>+<EA>")                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
+                sys.stdout.flush()                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
+                self.open_next_image()                                                                  # Adjusted by Peter van Lunteren on 13 July 2023
+            else:                                                                                       # Adjusted by Peter van Lunteren on 18 Sept 2023
+                file_widget_item.setFlags(file_widget_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)    # Adjusted by Peter van Lunteren on 4 Aug 2023
+                file_widget_item.setCheckState(Qt.CheckState(0))                  # DEBUG                                     # Adjusted by Peter van Lunteren on 13 July 2023
+                print("<EA>-<EA>")                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
+                sys.stdout.flush()                                                                      # Adjusted by Peter van Lunteren on 5 Oct 2023
+
 
     def open_prev_image(self, _value=False):
         # Proceeding prev image without dialog if having any label
@@ -1298,6 +1454,8 @@ class MainWindow(QMainWindow, WindowMixin):
             filename = self.m_img_list[self.cur_img_idx]
             if filename:
                 self.load_file(filename)
+                                                                            # ADJUSTMENT: show selected image in middle of list window
+        self.scroll_selected_item_to_view()                                 # Adjusted by Peter van Lunteren on 14 Aug 2023
 
     def open_next_image(self, _value=False):
         # Proceeding prev image without dialog if having any label
@@ -1316,9 +1474,17 @@ class MainWindow(QMainWindow, WindowMixin):
             return
 
         filename = None
-        if self.file_path is None:
-            filename = self.m_img_list[0]
-            self.cur_img_idx = 0
+        if self.file_path is None:                                                  
+                                                                                # ADJUSTMENT: start with image passed on as file_to_begin_with, in stead of index 0
+            if self.file_to_begin_with != "":                                   # Adjusted by Peter van Lunteren on 12 July 2023
+                index_to_start = self.m_img_list.index(self.file_to_begin_with) # Adjusted by Peter van Lunteren on 10 July 2023
+                filename = self.m_img_list[index_to_start]                      # Adjusted by Peter van Lunteren on 10 July 2023
+                self.cur_img_idx = index_to_start                               # Adjusted by Peter van Lunteren on 10 July 2023
+            else:                                                               # Adjusted by Peter van Lunteren on 12 July 2023
+                filename = self.m_img_list[0]                                   # Adjusted by Peter van Lunteren on 12 July 2023
+                self.cur_img_idx = 0                                            # Adjusted by Peter van Lunteren on 12 July 2023
+            # filename = self.m_img_list[0]                                     # Adjusted by Peter van Lunteren on 10 July 2023
+            # self.cur_img_idx = 0                                              # Adjusted by Peter van Lunteren on 10 July 2023
         else:
             if self.cur_img_idx + 1 < self.img_count:
                 self.cur_img_idx += 1
@@ -1326,6 +1492,8 @@ class MainWindow(QMainWindow, WindowMixin):
 
         if filename:
             self.load_file(filename)
+                                                                                # ADJUSTMENT: show selected image in middle of list window
+        self.scroll_selected_item_to_view()                                     # Adjusted by Peter van Lunteren on 14 Aug 2023
 
     def open_file(self, _value=False):
         if not self.may_continue():
@@ -1342,11 +1510,15 @@ class MainWindow(QMainWindow, WindowMixin):
             self.load_file(filename)
 
     def save_file(self, _value=False):
+                                                                                            # ADJUSTMENT: set dummy save dir to real folder
+        self.default_save_dir = os.path.dirname(os.path.abspath(sys.argv[0]))               # Adjusted by Peter van Lunteren on 28 Aug 2023
         if self.default_save_dir is not None and len(self.default_save_dir):
             if self.file_path:
                 image_file_name = os.path.basename(self.file_path)
                 saved_file_name = os.path.splitext(image_file_name)[0]
-                saved_path = os.path.join(self.default_save_dir, saved_file_name)
+                                                                                            # ADJUSTMENT: default save location is same folder as image
+                # saved_path = os.path.join(ustr(self.default_save_dir), saved_file_name)   # Adjusted by Peter van Lunteren on 7 July 2023
+                saved_path = os.path.splitext(self.file_path)[0]                            # Adjusted by Peter van Lunteren on 7 July 2023
                 self._save_file(saved_path)
         else:
             image_file_dir = os.path.dirname(self.file_path)
@@ -1551,6 +1723,35 @@ def read(filename, default=None):
     except:
         return default
 
+# temporary file which labelImg writes to notify EcoAssist that it should convert xml to coco
+class LabelImgExchangeDir:
+    def __init__(self, dir):
+        self.dir = dir
+        Path(self.dir).mkdir(parents=True, exist_ok=True)
+
+    def create_file(self, content, idx):
+        timestamp_miliseconds = str(str(datetime.date.today()) + str(datetime.datetime.now().strftime('%H%M%S%f'))).replace('-', '')
+        temp_file = os.path.normpath(os.path.join(self.dir, f"{timestamp_miliseconds}-{idx}.txt"))
+        with open(temp_file, 'w') as f:
+            f.write(content)
+        print(f"Written by LabelImg : '{temp_file}' -- With content : '{content}'")
+    
+    def read_file(self, fp):
+        with open(fp, 'r') as f:
+            content = f.read()
+            print(f"Read by EcoAssist   : '{fp}' -- With content : '{content}'")
+            return content
+
+    def delete_file(self, fp):
+        if os.path.exists(fp):
+            os.remove(fp)
+
+    def exist_file(self):
+        filelist = glob.glob(os.path.normpath(os.path.join(self.dir, '*.txt')))
+        for fn in sorted(filelist):
+            return [True, fn]
+        return [False, '']
+
 
 def get_main_app(argv=None):
     """
@@ -1562,22 +1763,29 @@ def get_main_app(argv=None):
     app = QApplication(argv)
     app.setApplicationName(__appname__)
     app.setWindowIcon(new_icon("app"))
+                                                                                                        # ADJUSTMENT: adjust arguments
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("image_dir", nargs="?")
-    argparser.add_argument("class_file",
-                           default=os.path.join(os.path.dirname(__file__), "data", "predefined_classes.txt"),
-                           nargs="?")
-    argparser.add_argument("save_dir", nargs="?")
+    # argparser.add_argument("image_dir", nargs="?")                                                    # Adjusted by Peter van Lunteren on 13 July 2023
+    argparser.add_argument("class_list", nargs="?")                                                     # Adjusted by Peter van Lunteren on 6 July 2023
+    # argparser.add_argument("save_dir", nargs="?")                                                     # Adjusted by Peter van Lunteren on 13 July 2023
+    argparser.add_argument('file_list_txt', type=str, default=None)                                     # Adjusted by Peter van Lunteren on 6 July 2023
     args = argparser.parse_args(argv[1:])
 
-    args.image_dir = args.image_dir and os.path.normpath(args.image_dir)
-    args.class_file = args.class_file and os.path.normpath(args.class_file)
-    args.save_dir = args.save_dir and os.path.normpath(args.save_dir)
+    # add dummy path for image and save dir                                                             # Adjusted by Peter van Lunteren on 13 July 2023
+    current_dir = os.path.dirname(os.path.abspath(sys.argv[0]))                                         # Adjusted by Peter van Lunteren on 28 Aug 2023
+    image_dir = current_dir                                                                             # Adjusted by Peter van Lunteren on 13 July 2023
+    save_dir = current_dir                                                                              # Adjusted by Peter van Lunteren on 13 July 2023
 
-    # Usage : labelImg.py image classFile saveDir
-    win = MainWindow(args.image_dir,
-                     args.class_file,
-                     args.save_dir)
+    # args.image_dir = args.image_dir and os.path.normpath(args.image_dir)                              # Adjusted by Peter van Lunteren on 13 July 2023
+    args.class_list = args.class_list and os.path.normpath(args.class_list)                             # Adjusted by Peter van Lunteren on 6 July 2023
+    # args.save_dir = args.save_dir and os.path.normpath(args.save_dir)                                 # Adjusted by Peter van Lunteren on 13 July 2023
+    args.file_list_txt = args.file_list_txt and os.path.normpath(args.file_list_txt)                    # Adjusted by Peter van Lunteren on 6 July 2023
+
+    win = MainWindow(args.file_list_txt,                                                                # Adjusted by Peter van Lunteren on 6 July 2023
+                     image_dir,                                                                         # Adjusted by Peter van Lunteren on 13 July 2023
+                     args.class_list,                                                                   # Adjusted by Peter van Lunteren on 6 July 2023
+                     save_dir)                                                                          # Adjusted by Peter van Lunteren on 13 July 2023
+
     win.show()
     return app, win
 
