@@ -4,7 +4,7 @@
 # Human in the loop and annotation tool for EcoAssist (https://github.com/PetervanLunteren/EcoAssist).
 # Forked from labelImg (https://github.com/HumanSignal/labelImg).
 # Adjusted by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 5 Oct 2023
+# Latest edit by Peter van Lunteren on 1 Jul 2024
 
 import argparse
 import codecs
@@ -216,7 +216,9 @@ class MainWindow(QMainWindow, WindowMixin):
         self.canvas = Canvas(parent=self)
         self.canvas.zoomRequest.connect(self.zoom_request)
         self.canvas.lightRequest.connect(self.light_request)
-        self.canvas.set_drawing_shape_to_square(settings.get(SETTING_DRAW_SQUARE, False))
+
+                                                                                                        # ADJUSTMENT: exclude the square box feature from options since there was a bug that turned it on accidentally
+        # self.canvas.set_drawing_shape_to_square(settings.get(SETTING_DRAW_SQUARE, False))             # Adjusted by Peter van Lunteren on 1 Jul 2023
 
         scroll = QScrollArea()
         scroll.setWidget(self.canvas)
@@ -402,11 +404,12 @@ class MainWindow(QMainWindow, WindowMixin):
             self.pop_label_list_menu)
 
         # Draw squares/rectangles
-        self.draw_squares_option = QAction(get_str('drawSquares'), self)
-        self.draw_squares_option.setShortcut('Ctrl+Shift+R')
-        self.draw_squares_option.setCheckable(True)
-        self.draw_squares_option.setChecked(settings.get(SETTING_DRAW_SQUARE, False))
-        self.draw_squares_option.triggered.connect(self.toggle_draw_square)
+                                                                                                        # ADJUSTMENT: exclude the square box feature from options since there was a bug that turned it on accidentally
+        # self.draw_squares_option = QAction(get_str('drawSquares'), self)                              # Adjusted by Peter van Lunteren on 1 Jul 2023
+        # self.draw_squares_option.setShortcut('Ctrl+Shift+R')                                          # Adjusted by Peter van Lunteren on 1 Jul 2023
+        # self.draw_squares_option.setCheckable(True)                                                   # Adjusted by Peter van Lunteren on 1 Jul 2023
+        # self.draw_squares_option.setChecked(settings.get(SETTING_DRAW_SQUARE, False))                 # Adjusted by Peter van Lunteren on 1 Jul 2023
+        # self.draw_squares_option.triggered.connect(self.toggle_draw_square)                           # Adjusted by Peter van Lunteren on 1 Jul 2023
 
         # Store actions for further handling.
                                                                                                                                 # ADJUSTMENT: exclude image deletion and save from options
@@ -423,7 +426,8 @@ class MainWindow(QMainWindow, WindowMixin):
                                   open, open_dir, save_as, close, reset_all, quit),                                              # Adjusted by Peter van Lunteren on 19 Sept 2023
                               beginner=(), advanced=(),
                               editMenu=(edit, copy, delete,
-                                        None, color1, self.draw_squares_option),
+                                                                                                                                # ADJUSTMENT: exclude the square box feature from options since there was a bug that turned it on accidentally
+                                        None, color1), # , self.draw_squares_option),                                           # Adjusted by Peter van Lunteren on 1 Jul 2023
                               beginnerContext=(create, edit, copy, delete),
                               advancedContext=(create_mode, edit_mode, edit, copy,
                                                delete, shape_line_color, shape_fill_color),
@@ -591,15 +595,16 @@ class MainWindow(QMainWindow, WindowMixin):
         self.skip_to_next_unverified_file()                 # Adjusted by Peter van Lunteren on 20 Sept 2023
         QApplication.processEvents()                        # Adjusted by Peter van Lunteren on 13 July 2023
 
+                                                                                                        # ADJUSTMENT: exclude the square box feature from options since there was a bug that turned it on accidentally
+    # def keyReleaseEvent(self, event):                                                                 # Adjusted by Peter van Lunteren on 1 Jul 2023
+    #     if event.key() == Qt.Key_Control:                                                             # Adjusted by Peter van Lunteren on 1 Jul 2023
+    #         self.canvas.set_drawing_shape_to_square(False)                                            # Adjusted by Peter van Lunteren on 1 Jul 2023
 
-    def keyReleaseEvent(self, event):
-        if event.key() == Qt.Key_Control:
-            self.canvas.set_drawing_shape_to_square(False)
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Control:
-            # Draw rectangle if Ctrl is pressed
-            self.canvas.set_drawing_shape_to_square(True)
+                                                                                                        # ADJUSTMENT: exclude the square box feature from options since there was a bug that turned it on accidentally
+    # def keyPressEvent(self, event):                                                                   # Adjusted by Peter van Lunteren on 1 Jul 2023
+    #     if event.key() == Qt.Key_Control:                                                             # Adjusted by Peter van Lunteren on 1 Jul 2023
+    #         # Draw rectangle if Ctrl is pressed                                                       # Adjusted by Peter van Lunteren on 1 Jul 2023
+    #         self.canvas.set_drawing_shape_to_square(True)                                             # Adjusted by Peter van Lunteren on 1 Jul 2023
 
                                                                                                         # ADJUSTMENT: set scroll area to selected list item
     def scroll_selected_item_to_view(self):                                                             # Adjusted by Peter van Lunteren on 14 Aug 2023
@@ -1368,7 +1373,8 @@ class MainWindow(QMainWindow, WindowMixin):
         settings[SETTING_AUTO_SAVE] = self.auto_saving.isChecked()
         settings[SETTING_SINGLE_CLASS] = self.single_class_mode.isChecked()
         settings[SETTING_PAINT_LABEL] = self.display_label_option.isChecked()
-        settings[SETTING_DRAW_SQUARE] = self.draw_squares_option.isChecked()
+                                                                                                        # ADJUSTMENT: exclude the square box feature from options since there was a bug that turned it on accidentally
+        # settings[SETTING_DRAW_SQUARE] = self.draw_squares_option.isChecked()                          # Adjusted by Peter van Lunteren on 1 Jul 2023
         settings[SETTING_LABEL_FILE_FORMAT] = self.label_file_format
         settings.save()
 
@@ -1835,8 +1841,9 @@ class MainWindow(QMainWindow, WindowMixin):
         for shape in self.canvas.shapes:
             shape.paint_label = self.display_label_option.isChecked()
 
-    def toggle_draw_square(self):
-        self.canvas.set_drawing_shape_to_square(self.draw_squares_option.isChecked())
+                                                                                                        # ADJUSTMENT: exclude the square box feature from options since there was a bug that turned it on accidentally
+    # def toggle_draw_square(self):                                                                     # Adjusted by Peter van Lunteren on 1 Jul 2023
+    #     self.canvas.set_drawing_shape_to_square(self.draw_squares_option.isChecked())                 # Adjusted by Peter van Lunteren on 1 Jul 2023
     
 def inverted(color):
     return QColor(*[255 - v for v in color.getRgb()])
