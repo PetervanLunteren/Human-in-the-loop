@@ -4,7 +4,7 @@
 # Human in the loop and annotation tool for EcoAssist (https://github.com/PetervanLunteren/EcoAssist).
 # Forked from labelImg (https://github.com/HumanSignal/labelImg).
 # Adjusted by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 1 Jul 2024
+# Latest edit by Peter van Lunteren on 3 Jul 2024
 
 import argparse
 import codecs
@@ -1488,6 +1488,10 @@ class MainWindow(QMainWindow, WindowMixin):
     
                                                                                         # ADJUSTMENT: get xml path with temp-folder squeezed in
     def get_xml_path(self, path, ext = None):                                           # Adjusted by Peter van Lunteren on 12 Aug 2023
+                                                                                        # ADJUSTMENT: give dummy ext when dealing with extra dots in fp
+        if not os.path.splitext(path)[1].lower() in \
+            {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.xml'}:                 # Adjusted by Peter van Lunteren on 3 Jul 2024
+            path += '.xml'                                                              # Adjusted by Peter van Lunteren on 3 Jul 2024
         head_path = os.path.dirname(os.path.dirname(self.file_list_txt))                # Adjusted by Peter van Lunteren on 12 Aug 2023
         tail_path = os.path.splitext(os.path.relpath(path, head_path))                  # Adjusted by Peter van Lunteren on 12 Aug 2023
         if ext == None:                                                                 # Adjusted by Peter van Lunteren on 12 Aug 2023
