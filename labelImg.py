@@ -4,7 +4,7 @@
 # Human in the loop and annotation tool for EcoAssist (https://github.com/PetervanLunteren/EcoAssist).
 # Forked from labelImg (https://github.com/HumanSignal/labelImg).
 # Adjusted by Peter van Lunteren
-# Latest edit by Peter van Lunteren on 3 Jul 2024
+# Latest edit by Peter van Lunteren on 7 Aug 2024
 
 import argparse
 import codecs
@@ -23,6 +23,7 @@ import datetime                                 # Adjusted by Peter van Lunteren
 from pathlib import Path                        # Adjusted by Peter van Lunteren on 6 July 2023
 import xml.etree.cElementTree as ET             # Adjusted by Peter van Lunteren on 1 Aug 2023
 from PySide6.QtWidgets import QAbstractItemView # Adjusted by Peter van Lunteren on 5 March 2023
+from PIL import Image, ImageFile                # Adjusted by Peter van Lunteren on 7 Aug 2024
 
 from PySide6.QtGui import QTextLine, QAction, QImage, QColor, QCursor, QPixmap, QImageReader
 from PySide6.QtCore import QObject, Qt, QPoint, QSize, QByteArray, QTimer, QFileInfo, QPointF, QProcess
@@ -1129,7 +1130,8 @@ class MainWindow(QMainWindow, WindowMixin):
             else:
                 # Load image:
                 # read data first and store for saving into label file.
-                self.image_data = read(abs_file_path, None)
+                                                                                # ADJUSTMENT: open images via PIL so that it can read truncated files, then convert to QImage so PyQt can read it
+                self.image_data = read(abs_file_path, None, "load-img")         # Adjusted by Peter van Lunteren on 12 Aug 2023
                 self.label_file = None
                 self.canvas.verified = False
 
@@ -1721,13 +1723,25 @@ class MainWindow(QMainWindow, WindowMixin):
 def inverted(color):
     return QColor(*[255 - v for v in color.getRgb()])
 
-
-def read(filename, default=None):
-    try:
-        reader = QImageReader(filename)
-        reader.setAutoTransform(True)
-        return reader.read()
-    except:
+                                                                                            # ADJUSTMENT: open images via PIL so that it can read truncated files, then convert to QImage so PyQt can read it
+ImageFile.LOAD_TRUNCATED_IMAGES = True                                                      # Adjusted by Peter van Lunteren on 7 Aug 2024
+def read(filename, default=None, cmd=None):                                                 # Adjusted by Peter van Lunteren on 7 Aug 2024
+    try:                                                                                    # Adjusted by Peter van Lunteren on 7 Aug 2024
+        if cmd == "load-img":                                                               # Adjusted by Peter van Lunteren on 7 Aug 2024
+            pil_image = Image.open(filename)                                                # Adjusted by Peter van Lunteren on 7 Aug 2024
+            if pil_image.mode != "RGB":                                                     # Adjusted by Peter van Lunteren on 7 Aug 2024
+                pil_image = pil_image.convert("RGB")                                        # Adjusted by Peter van Lunteren on 7 Aug 2024
+            width, height = pil_image.size                                                  # Adjusted by Peter van Lunteren on 7 Aug 2024
+            image_data = pil_image.tobytes()                                                # Adjusted by Peter van Lunteren on 7 Aug 2024
+            q_image = QImage(image_data, width, height, QImage.Format_RGB888)               # Adjusted by Peter van Lunteren on 7 Aug 2024
+            q_image = q_image.convertToFormat(QImage.Format_RGB32)                          # Adjusted by Peter van Lunteren on 7 Aug 2024
+            q_image.setDevicePixelRatio(1)                                                  # Adjusted by Peter van Lunteren on 7 Aug 2024
+            return q_image                                                                  # Adjusted by Peter van Lunteren on 7 Aug 2024
+        else:                                                                               # Adjusted by Peter van Lunteren on 7 Aug 2024
+            reader = QImageReader(filename)
+            reader.setAutoTransform(True)
+            return reader.read()
+    except Exception as e:
         return default
 
 # temporary file which labelImg writes to notify EcoAssist that it should convert xml to coco
