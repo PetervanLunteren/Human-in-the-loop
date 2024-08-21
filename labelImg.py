@@ -1230,8 +1230,7 @@ class MainWindow(QMainWindow, WindowMixin):
             else:
                 # Load image:
                 # read data first and store for saving into label file.
-                                                                                    # ADJUSTMENT: open images via PIL so that it can read truncated files, then convert to QImage so PyQt can read it
-                self.image_data = read(unicode_file_path, None, "load-img")         # Adjusted by Peter van Lunteren on 7 Aug 2024
+                self.image_data = read(unicode_file_path, None)
                 self.label_file = None
                 self.canvas.verified = False
 
@@ -1385,7 +1384,9 @@ class MainWindow(QMainWindow, WindowMixin):
             self.load_file(filename)
 
     def scan_all_images(self, folder_path):
+        print("DEBUG1")
         extensions = ['.%s' % fmt.data().decode("ascii").lower() for fmt in QImageReader.supportedImageFormats()]
+        print("DEBUG2")
         images = []
 
         for root, dirs, files in os.walk(folder_path):
@@ -1854,42 +1855,13 @@ class MainWindow(QMainWindow, WindowMixin):
 def inverted(color):
     return QColor(*[255 - v for v in color.getRgb()])
 
-                                                                                            # ADJUSTMENT: open images via PIL so that it can read truncated files, then convert to QImage so PyQt can read it
-ImageFile.LOAD_TRUNCATED_IMAGES = True                                                      # Adjusted by Peter van Lunteren on 7 Aug 2024
-def read(filename, default=None, cmd=None):                                                 # Adjusted by Peter van Lunteren on 7 Aug 2024
-    try:                                                                                    # Adjusted by Peter van Lunteren on 7 Aug 2024
-        if cmd == "load-img":                                                               # Adjusted by Peter van Lunteren on 7 Aug 2024
-            pil_image = Image.open(filename)                                                # Adjusted by Peter van Lunteren on 7 Aug 2024
-            q_image = pil_image_to_qimage(pil_image)                                        # Adjusted by Peter van Lunteren on 7 Aug 2024
-            return q_image                                                                  # Adjusted by Peter van Lunteren on 7 Aug 2024
-        else:                                                                               # Adjusted by Peter van Lunteren on 7 Aug 2024
-            reader = QImageReader(filename)
-            reader.setAutoTransform(True)
-            return reader.read()
-    except Exception as e:
+def read(filename, default=None):
+    try:
+        reader = QImageReader(filename)
+        reader.setAutoTransform(True)
+        return reader.read()
+    except:
         return default
-
-# convert PIL to QImage format                                                              # Adjusted by Peter van Lunteren on 7 Aug 2024
-def pil_image_to_qimage(pil_image):                                                         # Adjusted by Peter van Lunteren on 7 Aug 2024 
-    if pil_image.mode == "RGB":                                                             # Adjusted by Peter van Lunteren on 7 Aug 2024
-        pass                                                                                # Adjusted by Peter van Lunteren on 7 Aug 2024
-    elif pil_image.mode == "RGBA":                                                          # Adjusted by Peter van Lunteren on 7 Aug 2024
-        pil_image = pil_image.convert("RGBA")                                               # Adjusted by Peter van Lunteren on 7 Aug 2024
-    elif pil_image.mode == "L":                                                             # Adjusted by Peter van Lunteren on 7 Aug 2024
-        pil_image = pil_image.convert("L")                                                  # Adjusted by Peter van Lunteren on 7 Aug 2024
-    else:                                                                                   # Adjusted by Peter van Lunteren on 7 Aug 2024
-        pil_image = pil_image.convert("RGB")                                                # Adjusted by Peter van Lunteren on 7 Aug 2024
-    data = pil_image.tobytes()                                                              # Adjusted by Peter van Lunteren on 7 Aug 2024
-    if pil_image.mode == "RGB":                                                             # Adjusted by Peter van Lunteren on 7 Aug 2024
-        qimage = QImage(data, pil_image.width, pil_image.height, QImage.Format_RGB888)      # Adjusted by Peter van Lunteren on 7 Aug 2024
-    elif pil_image.mode == "RGBA":                                                          # Adjusted by Peter van Lunteren on 7 Aug 2024
-        qimage = QImage(data, pil_image.width, pil_image.height, QImage.Format_RGBA8888)    # Adjusted by Peter van Lunteren on 7 Aug 2024
-    elif pil_image.mode == "L":                                                             # Adjusted by Peter van Lunteren on 7 Aug 2024
-        qimage = QImage(data, pil_image.width, pil_image.height, QImage.Format_Grayscale8)  # Adjusted by Peter van Lunteren on 7 Aug 2024
-    else:                                                                                   # Adjusted by Peter van Lunteren on 7 Aug 2024
-        raise ValueError(f"Unsupported image mode: {pil_image.mode}")                       # Adjusted by Peter van Lunteren on 7 Aug 2024
-    return qimage                                                                           # Adjusted by Peter van Lunteren on 7 Aug 2024
-
 
 # temporary file which labelImg writes to notify EcoAssist that it should convert xml to coco
 class LabelImgExchangeDir:
